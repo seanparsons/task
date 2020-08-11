@@ -1,38 +1,24 @@
 {-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE Strict #-}
 {-# LANGUAGE StrictData #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Tests where
+module Main where
 
-import Control.Lens hiding (argument)
-import Control.Monad hiding (fail)
-import Control.Monad.Fail
-import qualified Data.ByteString.Lazy as BS
-import Data.ByteString.Lens
-import Data.Csv hiding (header, Parser)
-import Data.Foldable
-import Data.Text hiding (foldl', filter)
+import Core
 import Data.Time.Calendar
-import Data.Time.Calendar.WeekDate
 import Data.Time.Clock
-import Data.Time.Format
 import qualified Data.Vector as V
-import GHC.Generics hiding (from)
 import Options.Applicative hiding (action)
-import Prelude hiding (fail)
-import System.Directory
-import System.FilePath
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.Runners
-import Text.Read
+import Prelude hiding (fail)
 
 firstOfJune :: UTCTime
-firstOfJune = UTCTime { utctDay = fromGregorian 2020 6 1, utctDayTime = 8 * 60 * 60 }
+firstOfJune = UTCTime {utctDay = fromGregorian 2020 6 1, utctDayTime = 8 * 60 * 60}
 
 testProcessActions :: TaskActions -> TaskStatuses -> Assertion
 testProcessActions actions expectedResult = do
@@ -64,8 +50,13 @@ processDeleteTaskTest = testCase "processTaskAction - CompleteTask" $ do
   testProcessActions [addTask, deleteTask] expectedResult
 
 tests :: TestTree
-tests = testGroup "Task Tests" [ processAddTaskTest
-                               , processCompleteTaskTest
-                               , processDeleteTaskTest
-                               ]
+tests =
+  testGroup
+    "Task Tests"
+    [ processAddTaskTest,
+      processCompleteTaskTest,
+      processDeleteTaskTest
+    ]
 
+main :: IO ()
+main = defaultMain tests

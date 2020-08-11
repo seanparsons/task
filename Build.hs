@@ -27,6 +27,9 @@ appSrc = "app"
 appHaskellSrc :: FilePath
 appHaskellSrc = appSrc </> "src"
 
+appHaskellTestSrc :: FilePath
+appHaskellTestSrc = appSrc </> "test"
+
 appSrcYamlFile :: FilePath
 appSrcYamlFile = appSrc </> "package.yaml"
 
@@ -35,6 +38,9 @@ appBuildDir = buildDir </> "app"
 
 appBuildSrc :: FilePath
 appBuildSrc = appBuildDir </> "src"
+
+appBuildTestSrc :: FilePath
+appBuildTestSrc = appBuildDir </> "test"
 
 appBuildYamlFile :: FilePath
 appBuildYamlFile = appBuildDir </> "package.yaml"
@@ -48,16 +54,25 @@ bundlePath = buildDir </> "bundle"
 bundledApp :: FilePath
 bundledApp = bundlePath </> taskApp <.> exe
 
+testSentinelPath :: FilePath
+testSentinelPath = bundlePath </> "tests-complete"
+
 needHaskellSrc :: Action ()
 needHaskellSrc = do
   haskellSource <- getDirectoryFiles appHaskellSrc ["//*.hs"]
   let haskellFiles = fmap (appBuildSrc </>) haskellSource
   need haskellFiles
 
+needHaskellTestSrc :: Action ()
+needHaskellTestSrc = do
+  haskellSource <- getDirectoryFiles appHaskellTestSrc ["//*.hs"]
+  let haskellFiles = fmap (appBuildTestSrc </>) haskellSource
+  need haskellFiles
+
 main :: IO ()
 main = shakeArgs shakeOptions {shakeFiles = "_build", shakeThreads = 0} $ do
   -- Root level needs.
-  want ([bundledApp])
+  want ([bundledApp, testSentinelPath])
   -- Clean.
   phony "clean" $ do
     cmd_ (Cwd appSrc) "cabal v2-clean"
@@ -74,14 +89,29 @@ main = shakeArgs shakeOptions {shakeFiles = "_build", shakeThreads = 0} $ do
   appBuildCabalFile %> \out -> do
     need [appBuildYamlFile]
     needHaskellSrc
+    needHaskellTestSrc
     cmd_ (Cwd appBuildDir) "hpack"
-  -- Copy any .hs files into the builder folder.
+  -- Copy any src/**/*.hs files into the builder folder.
   appBuildSrc <//> "*.hs" %> \out -> do
     let src =
           appHaskellSrc
             </> (dropDirectory1 $ dropDirectory1 $ dropDirectory1 out)
     need [src]
     copyFileChanged src out
+  -- Copy any test/**/*.hs files into the builder folder.
+  appBuildTestSrc <//> "*.hs" %> \out -> do
+    let src =
+          appHaskellTestSrc
+            </> (dropDirectory1 $ dropDirectory1 $ dropDirectory1 out)
+    need [src]
+    copyFileChanged src out
+  -- Test the server project with cabal.
+  testSentinelPath %> \out -> do
+    need [ghcVersionFile, appBuildCabalFile]
+    needHaskellSrc
+    needHaskellTestSrc
+    cmd_ (Cwd appBuildDir) "cabal v2-test"
+    writeFile' testSentinelPath "Yes"
   -- Build the server project with cabal.
   bundledApp %> \out -> do
     need [ghcVersionFile, appBuildCabalFile]

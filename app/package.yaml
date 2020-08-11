@@ -1,0 +1,43 @@
+name:                task
+version:             0.2.0.0
+license:             AllRightsReserved
+author:              Sean Parsons
+build-type:          Simple
+
+ghc-options:
+  - -Wall
+  - -Werror
+  - -threaded
+  - -optl-fuse-ld=gold
+  - -fno-warn-orphans 
+
+ld-options:
+  - -fuse-ld=gold
+
+dependencies:
+  - base
+  - bytestring
+  - cassava
+  - directory
+  - filepath
+  - generic-lens
+  - lens
+  - optparse-applicative
+  - time
+  - text
+  - vector
+
+tests:
+  task-test:
+    main: Tests.hs
+    source-dirs: 
+      - test
+      - src
+    dependencies:
+      - tasty
+      - tasty-hunit
+      - tasty-hedgehog
+
+executable:
+  main: Main.hs
+  source-dirs: src

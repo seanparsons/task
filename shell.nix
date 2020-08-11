@@ -41,7 +41,7 @@ let
       cd $PROJECT_ROOT
       build-project
       cd $PROJECT_ROOT/_build/bundle/
-      ./chat-chat $PROJECT_ROOT/oidc-config.json +RTS -N
+      ./task list
     '')
   ];
   scriptsDerivation = pkgs.stdenv.mkDerivation {

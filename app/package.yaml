@@ -18,11 +18,13 @@ dependencies:
   - base
   - bytestring
   - cassava
+  - data-default-class
   - directory
   - filepath
   - generic-lens
   - lens
   - optparse-applicative
+  - table-layout
   - time
   - text
   - vector

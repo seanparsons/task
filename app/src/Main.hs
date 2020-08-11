@@ -14,8 +14,10 @@ import Control.Monad.Fail
 import qualified Data.ByteString.Lazy as BS
 import Data.ByteString.Lens
 import Data.Csv hiding (header, Parser)
+import Data.Default.Class
 import Data.Foldable
 import Data.Text hiding (foldl', filter)
+import Data.Text.Lens
 import Data.Time.Calendar.WeekDate
 import Data.Time.Clock
 import Data.Time.Format
@@ -26,11 +28,12 @@ import Prelude hiding (fail)
 import System.Directory
 import System.FilePath
 import Text.Read
+import Text.Layout.Table
 
 -- Core --
 
 instance FromField UTCTime where
-  parseField text = parseTimeM True defaultTimeLocale rfc822DateFormat $ view (from packedChars) text
+  parseField textToParse = parseTimeM True defaultTimeLocale rfc822DateFormat $ view (from packedChars) textToParse
 
 instance ToField UTCTime where
   toField utctime = view packedChars $ formatTime defaultTimeLocale rfc822DateFormat utctime
@@ -200,12 +203,31 @@ isOutstanding now status =
 
 -- UI --
 
+outstandingColSpec :: [ColSpec]
+outstandingColSpec = [numCol, def]
+
+outstandingTableStyle :: TableStyle
+outstandingTableStyle = unicodeBoldHeaderS
+
+outstandingHeaderSpec :: HeaderSpec
+outstandingHeaderSpec = titlesH ["Task ID", "Description"]
+
+indexAndDescriptionRowGroups :: TaskStatuses -> (TaskStatus -> Bool) -> RowGroup String
+indexAndDescriptionRowGroups statuses statusFilter =
+  let withIndexes = V.indexed statuses
+      filteredStatuses = V.filter (\(_, s) -> statusFilter s) withIndexes  
+  in  rowsG $ fmap (\(i, s) -> [show i :: String, view (taskStatusTask . taskDescription . unpacked) s :: String]) $ V.toList filteredStatuses
+
+printOutstanding :: UTCTime -> TaskStatuses -> IO ()
+printOutstanding now statuses = do
+  let linesToPrint = tableLines outstandingColSpec outstandingTableStyle outstandingHeaderSpec $ [indexAndDescriptionRowGroups statuses $ isOutstanding now]
+  traverse_ putStrLn linesToPrint
+
 handleNewAction :: UTCTime -> TaskAction -> IO ()
 handleNewAction now (ListOutstanding _) = do
   actions <- loadTaskActions
   let statuses = processTaskActions mempty actions
-  let outstandingTasks = filter (\(_, s) -> isOutstanding now s) $ imap (,) $ V.toList statuses
-  traverse_ print outstandingTasks
+  printOutstanding now statuses
 handleNewAction _ action@(AddTask addTaskAction) = do
   actions <- loadTaskActions
   let updatedActions = actions <> [action]
@@ -225,7 +247,7 @@ handleNewAction _ action@(DeleteTask _) = do
 -- Runner --
 
 recurrenceReader :: ReadM Recurrence
-recurrenceReader = maybeReader $ \text -> case text of
+recurrenceReader = maybeReader $ \textToParse -> case textToParse of
                                             "daily"   -> Just Daily
                                             "weekly"  -> Just Weekly
                                             _         -> Nothing

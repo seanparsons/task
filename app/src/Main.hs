@@ -63,7 +63,7 @@ indexAndDescriptionRowGroups :: TaskStatuses -> (TaskStatus -> Bool) -> RowGroup
 indexAndDescriptionRowGroups statuses statusFilter =
   let withIndexes = V.indexed statuses
       filteredStatuses = V.filter (\(_, s) -> statusFilter s) withIndexes
-   in rowsG $ fmap (\(i, s) -> [show i, view (taskStatusTask . taskDescription . unpacked) s]) $ V.toList filteredStatuses
+   in rowsG $ fmap (\(i, s) -> [show (i + 1), view (taskStatusTask . taskDescription . unpacked) s]) $ V.toList filteredStatuses
 
 printOutstanding :: UTCTime -> TaskStatuses -> IO ()
 printOutstanding now statuses = do

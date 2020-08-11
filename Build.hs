@@ -71,6 +71,7 @@ needHaskellTestSrc = do
 
 main :: IO ()
 main = shakeArgs shakeOptions {shakeFiles = "_build", shakeThreads = 0} $ do
+  cabalResource <- newResource "Cabal" 1
   -- Root level needs.
   want ([bundledApp, testSentinelPath])
   -- Clean.
@@ -110,13 +111,15 @@ main = shakeArgs shakeOptions {shakeFiles = "_build", shakeThreads = 0} $ do
     need [ghcVersionFile, appBuildCabalFile]
     needHaskellSrc
     needHaskellTestSrc
-    cmd_ (Cwd appBuildDir) "cabal v2-test"
+    withResource cabalResource 1 $ do
+      cmd_ (Cwd appBuildDir) "cabal v2-test"
     writeFile' testSentinelPath "Yes"
   -- Build the server project with cabal.
   bundledApp %> \out -> do
     need [ghcVersionFile, appBuildCabalFile]
     needHaskellSrc
-    cmd_ (Cwd appBuildDir) "cabal v2-build" ["-j", "exe:" <> taskApp]
+    withResource cabalResource 1 $ do
+      cmd_ (Cwd appBuildDir) "cabal v2-build" ["-j", "exe:" <> taskApp]
     Stdout (trim -> exeLoc) <-
       cmd
         (Cwd appBuildDir)

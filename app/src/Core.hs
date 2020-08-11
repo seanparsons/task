@@ -175,10 +175,13 @@ shouldRecur (Just Weekly) (Just lastCompletedAt) now =
       nowWeek = view _2 (toWeekDate $ utctDay now)
    in lastCompletedAtWeek < nowWeek
 
+isDeleted :: TaskStatus -> Bool
+isDeleted = has (taskStatusDeletedAt . _Just)
+
 isOutstanding :: UTCTime -> TaskStatus -> Bool
 isOutstanding now status =
   let lastCompletedAt = firstOf (taskStatusCompletedAt . _Just) status
       notComplete = has (taskStatusCompletedAt . _Nothing) status
-      deleted = has (taskStatusDeletedAt . _Just) status
+      deleted = isDeleted status
       recurringAt = firstOf (taskStatusTask . taskRecurrence . _Just) status
    in not deleted && (notComplete || shouldRecur recurringAt lastCompletedAt now)

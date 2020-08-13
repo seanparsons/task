@@ -25,3 +25,4 @@ cabal.project.local~
 .direnv.d
 _build
 _shake
+result

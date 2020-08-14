@@ -15,9 +15,10 @@ ld-options:
   - -fuse-ld=gold
 
 dependencies:
+  - aeson
+  - aeson-casing
   - base
   - bytestring
-  - cassava
   - data-default-class
   - directory
   - filepath

@@ -8,29 +8,23 @@
 
 module Core where
 
+import Data.Aeson
+import Data.Aeson.Casing
+import Data.Aeson.TH
 import Control.Lens hiding (argument)
 import Control.Monad hiding (fail)
 import Control.Monad.Fail
-import qualified Data.ByteString.Lazy as BS
-import Data.ByteString.Lens
-import Data.Csv hiding (Parser, header)
+import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Foldable
-import Data.Text hiding (filter, foldl')
+import Data.Text hiding (filter, foldl', drop)
 import Data.Time.Calendar.WeekDate
 import Data.Time.Clock
-import Data.Time.Format
 import qualified Data.Vector as V
 import GHC.Generics hiding (from)
 import Options.Applicative hiding (action)
 import Prelude hiding (fail)
 
 -- Core --
-
-instance FromField UTCTime where
-  parseField textToParse = parseTimeM True defaultTimeLocale rfc822DateFormat $ view (from packedChars) textToParse
-
-instance ToField UTCTime where
-  toField utctime = view packedChars $ formatTime defaultTimeLocale rfc822DateFormat utctime
 
 data Recurrence
   = Daily
@@ -39,14 +33,7 @@ data Recurrence
 
 makePrisms ''Recurrence
 
-instance FromField Recurrence where
-  parseField "daily" = pure Daily
-  parseField "weekly" = pure Weekly
-  parseField _ = mzero
-
-instance ToField Recurrence where
-  toField Daily = "daily"
-  toField Weekly = "weekly"
+$(deriveJSON defaultOptions ''Recurrence)
 
 data Task
   = Task
@@ -57,9 +44,7 @@ data Task
 
 makeLenses ''Task
 
-instance FromRecord Task
-
-instance ToRecord Task
+$(deriveJSON defaultOptions{fieldLabelModifier = camelCase . drop 5} ''Task)
 
 data TaskStatus
   = TaskStatus
@@ -71,6 +56,8 @@ data TaskStatus
 
 makeLenses ''TaskStatus
 
+$(deriveJSON defaultOptions{fieldLabelModifier = camelCase . drop 5} ''TaskStatus)
+
 type TaskStatuses = V.Vector TaskStatus
 
 data ListOutstandingAction = ListOutstandingAction
@@ -78,9 +65,7 @@ data ListOutstandingAction = ListOutstandingAction
 
 makeLenses ''ListOutstandingAction
 
-instance FromRecord ListOutstandingAction
-
-instance ToRecord ListOutstandingAction
+$(deriveJSON defaultOptions ''ListOutstandingAction)
 
 data AddTaskAction
   = AddTaskAction
@@ -90,11 +75,7 @@ data AddTaskAction
 
 makeLenses ''AddTaskAction
 
-instance FromRecord AddTaskAction where
-  parseRecord vec = fmap AddTaskAction $ parseRecord vec
-
-instance ToRecord AddTaskAction where
-  toRecord (AddTaskAction task) = toRecord task
+$(deriveJSON defaultOptions{fieldLabelModifier = camelCase . drop 14} ''AddTaskAction)
 
 data CompleteTaskAction
   = CompleteTaskAction
@@ -105,9 +86,7 @@ data CompleteTaskAction
 
 makeLenses ''CompleteTaskAction
 
-instance FromRecord CompleteTaskAction
-
-instance ToRecord CompleteTaskAction
+$(deriveJSON defaultOptions{fieldLabelModifier = camelCase . drop 19} ''CompleteTaskAction)
 
 data DeleteTaskAction
   = DeleteTaskAction
@@ -118,9 +97,7 @@ data DeleteTaskAction
 
 makeLenses ''DeleteTaskAction
 
-instance FromRecord DeleteTaskAction
-
-instance ToRecord DeleteTaskAction
+$(deriveJSON defaultOptions{fieldLabelModifier = camelCase . drop 17} ''DeleteTaskAction)
 
 data TaskAction
   = ListOutstanding ListOutstandingAction
@@ -131,27 +108,15 @@ data TaskAction
 
 makePrisms ''TaskAction
 
+$(deriveJSON defaultOptions ''TaskAction)
+
 type TaskActions = [TaskAction]
 
-instance FromRecord TaskAction where
-  parseRecord vec = case (V.toList vec) of
-    ("listoutstanding" : rest) -> fmap ListOutstanding $ parseRecord $ V.fromList rest
-    ("addtask" : rest) -> fmap AddTask $ parseRecord $ V.fromList rest
-    ("completetask" : rest) -> fmap CompleteTask $ parseRecord $ V.fromList rest
-    ("deletetask" : rest) -> fmap DeleteTask $ parseRecord $ V.fromList rest
-    _ -> mzero
-
-instance ToRecord TaskAction where
-  toRecord (ListOutstanding action) = V.cons "listoutstanding" (toRecord action)
-  toRecord (AddTask action) = V.cons "addtask" (toRecord action)
-  toRecord (CompleteTask action) = V.cons "completetask" (toRecord action)
-  toRecord (DeleteTask action) = V.cons "deletetask" (toRecord action)
-
 decodeActions :: (Monad m, MonadFail m) => BS.ByteString -> m TaskActions
-decodeActions bytesToDecode = either fail (pure . V.toList) $ decodeWith defaultDecodeOptions NoHeader bytesToDecode
+decodeActions bytesToDecode = either fail pure $ traverse eitherDecode $ BS.lines bytesToDecode
 
 encodeActions :: TaskActions -> BS.ByteString
-encodeActions taskActions = encodeWith defaultEncodeOptions taskActions
+encodeActions taskActions = BS.unlines $ fmap encode taskActions
 
 processTaskAction :: TaskStatuses -> TaskAction -> TaskStatuses
 processTaskAction statuses (ListOutstanding _) =

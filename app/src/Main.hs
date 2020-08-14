@@ -32,7 +32,7 @@ taskActionsConfigDir = do
 taskActionsFilename :: IO FilePath
 taskActionsFilename = do
   configDir <- taskActionsConfigDir
-  return (configDir </> "haskelltasks.csv")
+  return (configDir </> "haskelltasks.json")
 
 loadTaskActions :: IO TaskActions
 loadTaskActions = do

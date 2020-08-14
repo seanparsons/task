@@ -10,7 +10,6 @@ module Core where
 
 import Data.Aeson
 import Data.Aeson.Casing
-import Data.Aeson.TH
 import Control.Lens hiding (argument)
 import Control.Monad hiding (fail)
 import Control.Monad.Fail
@@ -33,7 +32,11 @@ data Recurrence
 
 makePrisms ''Recurrence
 
-$(deriveJSON defaultOptions ''Recurrence)
+instance ToJSON Recurrence where
+   toJSON = genericToJSON $ aesonPrefix camelCase
+
+instance FromJSON Recurrence where
+   parseJSON = genericParseJSON $ aesonPrefix camelCase
 
 data Task
   = Task
@@ -44,7 +47,11 @@ data Task
 
 makeLenses ''Task
 
-$(deriveJSON defaultOptions{fieldLabelModifier = camelCase . drop 5} ''Task)
+instance ToJSON Task where
+  toJSON = genericToJSON $ aesonDrop 5 camelCase
+
+instance FromJSON Task where
+  parseJSON = genericParseJSON $ aesonDrop 5 camelCase
 
 data TaskStatus
   = TaskStatus
@@ -56,7 +63,11 @@ data TaskStatus
 
 makeLenses ''TaskStatus
 
-$(deriveJSON defaultOptions{fieldLabelModifier = camelCase . drop 5} ''TaskStatus)
+instance ToJSON TaskStatus where
+  toJSON = genericToJSON $ aesonDrop 5 camelCase
+
+instance FromJSON TaskStatus where
+  parseJSON = genericParseJSON $ aesonDrop 5 camelCase
 
 type TaskStatuses = V.Vector TaskStatus
 
@@ -65,7 +76,11 @@ data ListOutstandingAction = ListOutstandingAction
 
 makeLenses ''ListOutstandingAction
 
-$(deriveJSON defaultOptions ''ListOutstandingAction)
+instance ToJSON ListOutstandingAction where
+  toJSON = genericToJSON $ aesonPrefix camelCase
+
+instance FromJSON ListOutstandingAction where
+  parseJSON = genericParseJSON $ aesonPrefix camelCase
 
 data AddTaskAction
   = AddTaskAction
@@ -75,7 +90,11 @@ data AddTaskAction
 
 makeLenses ''AddTaskAction
 
-$(deriveJSON defaultOptions{fieldLabelModifier = camelCase . drop 14} ''AddTaskAction)
+instance ToJSON AddTaskAction where
+  toJSON = genericToJSON $ aesonDrop 14 camelCase
+
+instance FromJSON AddTaskAction where
+  parseJSON = genericParseJSON $ aesonDrop 14 camelCase
 
 data CompleteTaskAction
   = CompleteTaskAction
@@ -86,7 +105,11 @@ data CompleteTaskAction
 
 makeLenses ''CompleteTaskAction
 
-$(deriveJSON defaultOptions{fieldLabelModifier = camelCase . drop 19} ''CompleteTaskAction)
+instance ToJSON CompleteTaskAction where
+  toJSON = genericToJSON $ aesonDrop 19 camelCase
+
+instance FromJSON CompleteTaskAction where
+  parseJSON = genericParseJSON $ aesonDrop 19 camelCase
 
 data DeleteTaskAction
   = DeleteTaskAction
@@ -97,7 +120,11 @@ data DeleteTaskAction
 
 makeLenses ''DeleteTaskAction
 
-$(deriveJSON defaultOptions{fieldLabelModifier = camelCase . drop 17} ''DeleteTaskAction)
+instance ToJSON DeleteTaskAction where
+  toJSON = genericToJSON $ aesonDrop 17 camelCase
+
+instance FromJSON DeleteTaskAction where
+  parseJSON = genericParseJSON $ aesonDrop 17 camelCase
 
 data TaskAction
   = ListOutstanding ListOutstandingAction
@@ -108,7 +135,11 @@ data TaskAction
 
 makePrisms ''TaskAction
 
-$(deriveJSON defaultOptions ''TaskAction)
+instance ToJSON TaskAction where
+  toJSON = genericToJSON $ aesonPrefix camelCase
+
+instance FromJSON TaskAction where
+  parseJSON = genericParseJSON $ aesonPrefix camelCase
 
 type TaskActions = [TaskAction]
 

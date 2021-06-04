@@ -25,7 +25,6 @@ dependencies:
   - generic-lens
   - lens
   - optparse-applicative
-  - table-layout
   - time
   - text
   - vector

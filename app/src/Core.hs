@@ -4,7 +4,12 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE Strict #-}
 {-# LANGUAGE StrictData #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 module Core where
 
@@ -22,6 +27,7 @@ import qualified Data.Vector as V
 import GHC.Generics hiding (from)
 import Options.Applicative hiding (action)
 import Prelude hiding (fail)
+import Data.Generics.Product
 
 -- Core --
 
@@ -29,8 +35,6 @@ data Recurrence
   = Daily
   | Weekly
   deriving (Eq, Show, Generic)
-
-makePrisms ''Recurrence
 
 instance ToJSON Recurrence where
    toJSON = genericToJSON $ aesonPrefix camelCase
@@ -40,41 +44,35 @@ instance FromJSON Recurrence where
 
 data Task
   = Task
-      { _taskDescription :: Text,
-        _taskRecurrence :: Maybe Recurrence
+      { description :: Text,
+        recurrence :: Maybe Recurrence
       }
   deriving (Eq, Show, Generic)
 
-makeLenses ''Task
-
 instance ToJSON Task where
-  toJSON = genericToJSON $ aesonDrop 5 camelCase
+  toJSON = genericToJSON defaultOptions 
 
 instance FromJSON Task where
-  parseJSON = genericParseJSON $ aesonDrop 5 camelCase
+  parseJSON = genericParseJSON defaultOptions
 
 data TaskStatus
   = TaskStatus
-      { _taskStatusTask :: Task,
-        _taskStatusDeletedAt :: Maybe UTCTime,
-        _taskStatusCompletedAt :: Maybe UTCTime
+      { task :: Task,
+        deletedAt :: Maybe UTCTime,
+        completedAt :: Maybe UTCTime
       }
   deriving (Eq, Show, Generic)
 
-makeLenses ''TaskStatus
-
 instance ToJSON TaskStatus where
-  toJSON = genericToJSON $ aesonDrop 5 camelCase
+  toJSON = genericToJSON defaultOptions
 
 instance FromJSON TaskStatus where
-  parseJSON = genericParseJSON $ aesonDrop 5 camelCase
+  parseJSON = genericParseJSON defaultOptions
 
 type TaskStatuses = V.Vector TaskStatus
 
 data ListOutstandingAction = ListOutstandingAction
   deriving (Eq, Show, Generic)
-
-makeLenses ''ListOutstandingAction
 
 instance ToJSON ListOutstandingAction where
   toJSON = genericToJSON $ aesonPrefix camelCase
@@ -84,47 +82,41 @@ instance FromJSON ListOutstandingAction where
 
 data AddTaskAction
   = AddTaskAction
-      { _addTaskActionTask :: Task
+      { task :: Task
       }
   deriving (Eq, Show, Generic)
 
-makeLenses ''AddTaskAction
-
 instance ToJSON AddTaskAction where
-  toJSON = genericToJSON $ aesonDrop 14 camelCase
+  toJSON = genericToJSON defaultOptions 
 
 instance FromJSON AddTaskAction where
-  parseJSON = genericParseJSON $ aesonDrop 14 camelCase
+  parseJSON = genericParseJSON defaultOptions 
 
 data CompleteTaskAction
   = CompleteTaskAction
-      { _completeTaskActionIndex :: Int,
-        _completeTaskActionTimestamp :: UTCTime
+      { index :: Int,
+        timestamp :: UTCTime
       }
   deriving (Eq, Show, Generic)
 
-makeLenses ''CompleteTaskAction
-
 instance ToJSON CompleteTaskAction where
-  toJSON = genericToJSON $ aesonDrop 19 camelCase
+  toJSON = genericToJSON defaultOptions 
 
 instance FromJSON CompleteTaskAction where
-  parseJSON = genericParseJSON $ aesonDrop 19 camelCase
+  parseJSON = genericParseJSON defaultOptions 
 
 data DeleteTaskAction
   = DeleteTaskAction
-      { _deleteTaskActionIndex :: Int,
-        _deleteTaskActionTimestamp :: UTCTime
+      { index :: Int,
+        timestamp :: UTCTime
       }
   deriving (Eq, Show, Generic)
 
-makeLenses ''DeleteTaskAction
-
 instance ToJSON DeleteTaskAction where
-  toJSON = genericToJSON $ aesonDrop 17 camelCase
+  toJSON = genericToJSON defaultOptions 
 
 instance FromJSON DeleteTaskAction where
-  parseJSON = genericParseJSON $ aesonDrop 17 camelCase
+  parseJSON = genericParseJSON defaultOptions 
 
 data TaskAction
   = ListOutstanding ListOutstandingAction
@@ -132,8 +124,6 @@ data TaskAction
   | CompleteTask CompleteTaskAction
   | DeleteTask DeleteTaskAction
   deriving (Eq, Show, Generic)
-
-makePrisms ''TaskAction
 
 instance ToJSON TaskAction where
   toJSON = genericToJSON $ aesonPrefix camelCase
@@ -152,32 +142,32 @@ encodeActions taskActions = BS.unlines $ fmap encode taskActions
 processTaskAction :: TaskStatuses -> TaskAction -> TaskStatuses
 processTaskAction statuses (ListOutstanding _) =
   statuses
-processTaskAction statuses (AddTask (AddTaskAction {..})) =
-  V.snoc statuses (TaskStatus _addTaskActionTask Nothing Nothing)
-processTaskAction statuses (CompleteTask (CompleteTaskAction {..})) =
-  set (ix (_completeTaskActionIndex - 1) . taskStatusCompletedAt) (Just _completeTaskActionTimestamp) statuses
-processTaskAction statuses (DeleteTask (DeleteTaskAction {..})) =
-  set (ix (_deleteTaskActionIndex - 1) . taskStatusDeletedAt) (Just _deleteTaskActionTimestamp) statuses
+processTaskAction statuses (AddTask action) =
+  V.snoc statuses (TaskStatus (action ^. field @"task") Nothing Nothing)
+processTaskAction statuses (CompleteTask action) =
+  set (ix ((action ^. field @"index") - 1) . field @"completedAt") (Just (action ^. field @"timestamp")) statuses
+processTaskAction statuses (DeleteTask action) =
+  set (ix ((action ^. field @"index") - 1) . field @"deletedAt") (Just (action ^. field @"timestamp")) statuses
 
 processTaskActions :: TaskStatuses -> TaskActions -> TaskStatuses
-processTaskActions statuses actions = foldl' processTaskAction statuses actions
+processTaskActions = foldl' processTaskAction
 
 shouldRecur :: Maybe Recurrence -> Maybe UTCTime -> UTCTime -> Bool
 shouldRecur (Just _) Nothing _ = True
 shouldRecur Nothing _ _ = False
-shouldRecur (Just Daily) (Just lastCompletedAt) now = utctDay lastCompletedAt < utctDay now
-shouldRecur (Just Weekly) (Just lastCompletedAt) now =
-  let lastCompletedAtWeek = view _2 (toWeekDate $ utctDay lastCompletedAt)
+shouldRecur (Just Daily) (Just completedAt) now = utctDay completedAt < utctDay now
+shouldRecur (Just Weekly) (Just completedAt) now =
+  let lastCompletedAtWeek = view _2 (toWeekDate $ utctDay completedAt)
       nowWeek = view _2 (toWeekDate $ utctDay now)
    in lastCompletedAtWeek < nowWeek
 
 isDeleted :: TaskStatus -> Bool
-isDeleted = has (taskStatusDeletedAt . _Just)
+isDeleted = has (field @"deletedAt" . _Just)
 
 isOutstanding :: UTCTime -> TaskStatus -> Bool
 isOutstanding now status =
-  let lastCompletedAt = firstOf (taskStatusCompletedAt . _Just) status
-      notComplete = has (taskStatusCompletedAt . _Nothing) status
+  let lastCompletedAt = firstOf (field @"completedAt" . _Just) status
+      notComplete = has (field @"completedAt" . _Nothing) status
       deleted = isDeleted status
-      recurringAt = firstOf (taskStatusTask . taskRecurrence . _Just) status
+      recurringAt = firstOf (field @"task" . field @"recurrence" . _Just) status
    in not deleted && (notComplete || shouldRecur recurringAt lastCompletedAt now)

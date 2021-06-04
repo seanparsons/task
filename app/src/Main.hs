@@ -1,10 +1,12 @@
 {-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE Strict #-}
-{-# LANGUAGE StrictData #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 module Main where
 
@@ -12,18 +14,20 @@ import Control.Lens hiding (argument)
 import Control.Monad hiding (fail)
 import Core
 import qualified Data.ByteString.Lazy as BS
-import Data.Default.Class
 import Data.Foldable
-import Data.Text hiding (filter, foldl')
-import Data.Text.Lens
+import Data.Semigroup hiding (option)
+import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.IO as T
+import Data.List
 import Data.Time.Clock
 import qualified Data.Vector as V
 import Options.Applicative hiding (action)
 import System.Directory
 import System.FilePath
-import Text.Layout.Table
 import Text.Read
 import Prelude hiding (fail)
+import Data.Generics.Product
 
 taskActionsConfigDir :: IO FilePath
 taskActionsConfigDir = do
@@ -49,26 +53,67 @@ saveTaskActions taskActions = do
   BS.writeFile actionsFilename $ encodeActions taskActions
 
 -- UI --
+sepH :: Text
+sepH  = "━"
 
-outstandingColSpec :: [ColSpec]
-outstandingColSpec = [numCol, def]
+sepV :: Text
+sepV  = "┃"
 
-outstandingTableStyle :: TableStyle
-outstandingTableStyle = unicodeBoldHeaderS
+topL :: Text
+topL  = "┏"
 
-outstandingHeaderSpec :: HeaderSpec
-outstandingHeaderSpec = titlesH ["Task ID", "Description"]
+topC :: Text
+topC  = "┳"
 
-indexAndDescriptionRowGroups :: TaskStatuses -> (TaskStatus -> Bool) -> RowGroup String
-indexAndDescriptionRowGroups statuses statusFilter =
-  let withIndexes = V.indexed statuses
-      filteredStatuses = V.filter (\(_, s) -> statusFilter s) withIndexes
-   in rowsG $ fmap (\(i, s) -> [show (i + 1), view (taskStatusTask . taskDescription . unpacked) s]) $ V.toList filteredStatuses
+topR :: Text
+topR  = "┓"
+
+sepLC :: Text
+sepLC = "┣"
+
+sepC :: Text
+sepC  = "╋"
+
+sepRC :: Text
+sepRC = "┫"
+
+bottomL :: Text
+bottomL = "┗"
+
+bottomC :: Text
+bottomC = "┻"
+
+bottomR :: Text
+bottomR = "┛"
+
+outstandingHeaders :: [Text]
+outstandingHeaders = ["Task ID", "Description"]
+
+lineWithPadding :: [Int] -> [Text] -> [Text]
+lineWithPadding sizes lineParts = fmap (\(s, t) -> t <> T.replicate (s - T.length t) " ") $ zip sizes lineParts
+
+getLineText :: [Int] -> [Text] -> (Text, Text, Text, Text) -> Text
+getLineText sizes lineParts (leftBounds, middleSeparator, rightBounds, padWith) =
+  let middle = T.intercalate (padWith <> middleSeparator <> padWith) $ lineWithPadding sizes lineParts
+   in leftBounds <> padWith <> middle <> padWith <> rightBounds
+
+indexes :: [Int]
+indexes = [1..]
 
 printOutstanding :: UTCTime -> TaskStatuses -> IO ()
 printOutstanding now statuses = do
-  let linesToPrint = tableLines outstandingColSpec outstandingTableStyle outstandingHeaderSpec $ [indexAndDescriptionRowGroups statuses $ isOutstanding now]
-  traverse_ putStrLn linesToPrint
+  let statusesToPrint = filter (\(s, _) -> isOutstanding now s) $ zip (V.toList statuses) indexes
+  let tasksAsText = fmap (\(s, i) -> [T.pack $ show i, s ^. field @"task" . field @"description"]) statusesToPrint
+  let everythingAsColumns = transpose ([outstandingHeaders] <> tasksAsText)
+  let sizes = fmap (getMax . foldMap (Max . T.length)) everythingAsColumns
+  let horizontalLines = fmap (`T.replicate` sepH) sizes
+  let topLine = getLineText sizes horizontalLines (topL, topC, topR, sepH)
+  let headerLine = getLineText sizes outstandingHeaders (sepV, sepV, sepV, " ")
+  let headerSeparatorLine = getLineText sizes horizontalLines (sepLC, sepV, sepRC, sepH)
+  let entryLines = fmap (\e -> getLineText sizes e (sepV, sepV, sepV, " ")) tasksAsText
+  let bottomLine = getLineText sizes horizontalLines (bottomL, bottomC, bottomR, sepH)
+  let linesToPrint = [topLine, headerLine, headerSeparatorLine] <> entryLines <> [bottomLine]
+  traverse_ T.putStrLn linesToPrint
 
 handleNewAction :: UTCTime -> TaskAction -> IO ()
 handleNewAction now (ListOutstanding _) = do
@@ -79,8 +124,8 @@ handleNewAction _ action@(AddTask addTaskAction) = do
   actions <- loadTaskActions
   let updatedActions = actions <> [action]
   saveTaskActions updatedActions
-  let description = view (addTaskActionTask . taskDescription) addTaskAction
-  putStrLn ("Added task: " <> unpack description)
+  let description = view (field @"task" . field @"description") addTaskAction
+  putStrLn ("Added task: " <> T.unpack description)
 handleNewAction _ action@(CompleteTask _) = do
   actions <- loadTaskActions
   let updatedActions = actions <> [action]
